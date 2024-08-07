@@ -40,31 +40,49 @@ pub fn rope(y: &mut Tensor<f32>, start_pos: usize, theta: f32) {
 // softmax(x) = exp(x - max) / sum(exp(x - max))
 // y = softmax(mask(x))
 pub fn masked_softmax(y: &mut Tensor<f32>) {
+    // 获取维度数
     let ndim = y.shape().len();
+    // 确保至少有2个维度
     assert!(ndim >= 2);
+    // 每个序列的长度
     let seq_len = y.shape()[ndim - 2];
+    // 序列的总长度
     let total_seq_len = y.shape()[ndim - 1];
+    // 批次数量
     let batch = y.size() / (seq_len * total_seq_len);
+    // 获取数据的可变引用
     let data = unsafe { y.data_mut() };
+    // 遍历每个批次
     for b in 0..batch {
+        // 当前批次的基索引
         let base = b * seq_len * total_seq_len;
+        // 遍历批次中的每个序列
         for i in 0..seq_len {
+            // 当前序列的偏移量
             let offset = base + i * total_seq_len;
+            // 软最大化的边界
             let boundary = total_seq_len - seq_len + i + 1;
 
+            // 找到当前序列中最大值（直到边界）
             let max = data[offset..offset + boundary]
                 .iter()
                 .fold(data[offset], |a, b| a.max(*b));
 
+            // 计算指数和归一化所需的和
             let sum = (0..boundary)
                 .map(|j| {
+                    // 指数值减去最大值
                     let e = (data[offset + j] - max).exp();
+                    // 将指数值存回张量
                     data[offset + j] = e;
+                    // 返回指数值
                     e
                 })
+                // 指数值的总和
                 .sum::<f32>();
-
+            // 通过除以和来归一化指数值，得到软最大化的概率
             (0..boundary).for_each(|j| data[offset + j] /= sum);
+            // 将序列的其余部分设置为0
             (boundary..total_seq_len).for_each(|j| data[offset + j] = 0.0);
         }
     }
@@ -74,16 +92,22 @@ pub fn rms_norm(y: &mut Tensor<f32>, x: &Tensor<f32>, w: &Tensor<f32>, epsilon: 
     todo!("实现 rms_norm，计算前做一些必要的检查会帮助你后续调试")
 }
 
+pub fn sigmoid(x: f32) -> f32 {
+    let e = std::f32::consts::E;
+    1. / (1. + e.powf(-x))
+}
 // y = sigmoid(x) * x * y
 // hint: this is an element-wise operation
 pub fn silu(y: &mut Tensor<f32>, x: &Tensor<f32>) {
-    // let len = y.size();
-    // assert!(len == x.size());
+    let len = y.size();
+    assert!(len == x.size());
 
-    // let _y = unsafe { y.data_mut() };
-    // let _x = x.data();
-
-    todo!("实现 silu，这里给了一些前期准备工作的提示，你可以参考")
+    let _y = unsafe { y.data_mut() };
+    let _x = x.data();
+    for i in 0..=len - 1 {
+        _y[i] = sigmoid(_x[i]) * _x[i] * _y[i];
+    }
+    // todo!("实现 silu，这里给了一些前期准备工作的提示，你可以参考")
 }
 
 // C = beta * C + alpha * A @ B^T
