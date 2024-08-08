@@ -44,9 +44,9 @@ pub fn masked_softmax(y: &mut Tensor<f32>) {
     let ndim = y.shape().len();
     // 确保至少有2个维度
     assert!(ndim >= 2);
-    // 每个序列的长度
+    // 序列的数量
     let seq_len = y.shape()[ndim - 2];
-    // 序列的总长度
+    // 每个序列的长度
     let total_seq_len = y.shape()[ndim - 1];
     // 批次数量
     let batch = y.size() / (seq_len * total_seq_len);
@@ -95,9 +95,9 @@ pub fn rms_norm(y: &mut Tensor<f32>, x: &Tensor<f32>, w: &Tensor<f32>, epsilon: 
     let ndim = y.shape().len();
     // 确保至少有2个维度
     assert!(ndim >= 2);
-    // 每个序列的长度
+    // 序列的数量
     let seq_len = y.shape()[ndim - 2];
-    // 序列的总长度
+    // 每个序列的长度
     let total_seq_len = y.shape()[ndim - 1];
     // 获取维度数
     let wdim = w.shape().len();
@@ -154,7 +154,38 @@ pub fn silu(y: &mut Tensor<f32>, x: &Tensor<f32>) {
 // C = beta * C + alpha * A @ B^T
 // hint: You don't need to do an explicit transpose of B
 pub fn matmul_transb(c: &mut Tensor<f32>, beta: f32, a: &Tensor<f32>, b: &Tensor<f32>, alpha: f32) {
-    todo!("实现 matmul_transb，计算前做一些必要的检查会帮助你后续调试");
+    // todo!("实现 matmul_transb，计算前做一些必要的检查会帮助你后续调试");
+    assert!(a.shape().len() == b.shape().len());
+    assert!(a.shape().len() == c.shape().len());
+
+    let ndim = a.shape().len();
+    assert!(ndim >= 2);
+    let a_seq_len = a.shape()[ndim - 2];
+    let a_total_seq_len = a.shape()[ndim - 1];
+
+    let b_seq_len = b.shape()[ndim - 2];
+    let b_total_seq_len = b.shape()[ndim - 1];
+
+    let c_seq_len = c.shape()[ndim - 2];
+    let c_total_seq_len = c.shape()[ndim - 1];
+
+    let _c = unsafe { c.data_mut() };
+    let _a = a.data();
+    let _b = b.data();
+
+    assert!(a_total_seq_len == b_total_seq_len);
+    assert!(c_total_seq_len == b_seq_len);
+    assert!(a_seq_len == c_seq_len);
+
+    for l in 0..c_seq_len {
+        for i in 0..c_total_seq_len {
+            let sum = (0..a_total_seq_len)
+                .map(|j| _a[l * a_total_seq_len + j] * _b[i * b_total_seq_len + j])
+                // 指数值的总和
+                .sum::<f32>();
+            _c[l * c_seq_len + i] = beta * _c[l * c_seq_len + i] + alpha * sum;
+        }
+    }
 }
 
 // Dot product of two tensors (treated as vectors)
