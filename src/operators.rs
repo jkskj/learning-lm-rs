@@ -89,7 +89,48 @@ pub fn masked_softmax(y: &mut Tensor<f32>) {
 }
 
 pub fn rms_norm(y: &mut Tensor<f32>, x: &Tensor<f32>, w: &Tensor<f32>, epsilon: f32) {
-    todo!("实现 rms_norm，计算前做一些必要的检查会帮助你后续调试")
+    // todo!("实现 rms_norm，计算前做一些必要的检查会帮助你后续调试")
+    assert!(y.size() == x.size());
+    // 获取维度数
+    let ndim = y.shape().len();
+    // 确保至少有2个维度
+    assert!(ndim >= 2);
+    // 每个序列的长度
+    let seq_len = y.shape()[ndim - 2];
+    // 序列的总长度
+    let total_seq_len = y.shape()[ndim - 1];
+    // 获取维度数
+    let wdim = w.shape().len();
+    // 确保只有1个维度
+    assert!(wdim == 1);
+    // 确保长度相同
+    assert!(w.size() == total_seq_len);
+    // 批次数量
+    let batch = y.size() / (seq_len * total_seq_len);
+    // 获取数据的引用
+    let _y = unsafe { y.data_mut() };
+    let _x = x.data();
+    let _w = w.data();
+    // 遍历每个批次
+    for b in 0..batch {
+        // 当前批次的基索引
+        let base = b * seq_len * total_seq_len;
+        // 遍历批次中的每个序列
+        for l in 0..seq_len {
+            // 当前序列的偏移量
+            let offset = base + l * total_seq_len;
+            // 平方和
+            let s: f32 = _x[offset..offset + total_seq_len]
+                .iter()
+                .map(|f| f * f)
+                .sum();
+            let sqrt = (s / total_seq_len as f32 + epsilon).sqrt();
+            // 计算并储存结果
+            for i in 0..total_seq_len {
+                _y[offset + i] = _w[i] * _x[offset + i] / sqrt;
+            }
+        }
+    }
 }
 
 pub fn sigmoid(x: f32) -> f32 {
@@ -104,7 +145,7 @@ pub fn silu(y: &mut Tensor<f32>, x: &Tensor<f32>) {
 
     let _y = unsafe { y.data_mut() };
     let _x = x.data();
-    for i in 0..=len - 1 {
+    for i in 0..len {
         _y[i] = sigmoid(_x[i]) * _x[i] * _y[i];
     }
     // todo!("实现 silu，这里给了一些前期准备工作的提示，你可以参考")
