@@ -89,7 +89,6 @@ pub fn masked_softmax(y: &mut Tensor<f32>) {
 }
 
 pub fn rms_norm(y: &mut Tensor<f32>, x: &Tensor<f32>, w: &Tensor<f32>, epsilon: f32) {
-    // todo!("实现 rms_norm，计算前做一些必要的检查会帮助你后续调试")
     assert!(y.size() == x.size());
     // 获取维度数
     let ndim = y.shape().len();
@@ -148,13 +147,11 @@ pub fn silu(y: &mut Tensor<f32>, x: &Tensor<f32>) {
     for i in 0..len {
         _y[i] = sigmoid(_x[i]) * _x[i] * _y[i];
     }
-    // todo!("实现 silu，这里给了一些前期准备工作的提示，你可以参考")
 }
 
 // C = beta * C + alpha * A @ B^T
 // hint: You don't need to do an explicit transpose of B
 pub fn matmul_transb(c: &mut Tensor<f32>, beta: f32, a: &Tensor<f32>, b: &Tensor<f32>, alpha: f32) {
-    // todo!("实现 matmul_transb，计算前做一些必要的检查会帮助你后续调试");
     assert!(a.shape().len() == b.shape().len());
     assert!(a.shape().len() == c.shape().len());
 
@@ -183,7 +180,7 @@ pub fn matmul_transb(c: &mut Tensor<f32>, beta: f32, a: &Tensor<f32>, b: &Tensor
                 .map(|j| _a[l * a_total_seq_len + j] * _b[i * b_total_seq_len + j])
                 // 指数值的总和
                 .sum::<f32>();
-            _c[l * c_seq_len + i] = beta * _c[l * c_seq_len + i] + alpha * sum;
+            _c[l * c_total_seq_len + i] = beta * _c[l * c_total_seq_len + i] + alpha * sum;
         }
     }
 }
