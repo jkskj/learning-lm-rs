@@ -3,7 +3,7 @@ use std::vec;
 
 use crate::config::LlamaConfigJson;
 use crate::kvcache::KVCache;
-use crate::operators::{self as OP, matmul_transb, rms_norm, sigmoid};
+use crate::operators::{self as OP, masked_softmax, matmul_transb, rms_norm, sigmoid};
 use crate::params::LLamaParams;
 use crate::tensor::Tensor;
 use safetensors::SafeTensors;
@@ -101,10 +101,43 @@ impl Llama<f32> {
             let full_k = &mut cache.k_cache(layer, 0); // (total_seq, n_kv_h * dqkv)
             let full_v = &mut cache.v_cache(layer, 0); // (total_seq, n_kv_h * dqkv)
 
-            todo!("self_attention(...)");
-            todo!("down_proj matmul and add residual");
+            let mut x = Tensor::<f32>::default(&vec![seq_len, self.d]);
+            self_attention(
+                &mut x,
+                &mut att_scores,
+                q,
+                &full_k,
+                &full_v,
+                self.n_kv_h,
+                n_groups,
+                seq_len,
+                total_seq_len,
+                self.dqkv,
+            );
 
-            todo!("mlp(...)");
+            // x = x @ O_weight.T
+            OP::matmul_transb(&mut hidden_states, 0., &x, &self.params.wo[layer], 1.0);
+
+            // residual = x + residual
+            let len = residual.size();
+            assert!(len == hidden_states.size());
+            let _r = unsafe { residual.data_mut() };
+            let _h = hidden_states.data();
+            for i in 0..len {
+                _r[i] += _h[i];
+            }
+
+            mlp(
+                &mut residual,
+                &mut hidden_states,
+                &mut gate_buf,
+                &mut up_buf,
+                &self.params.w_up[layer],
+                &self.params.w_down[layer],
+                &self.params.w_gate[layer],
+                &self.params.rms_ffn_w[layer],
+                self.eps,
+            );
         }
 
         // No matter what seq_len, the output is always a 1D vector of length vocab,
@@ -153,7 +186,48 @@ fn self_attention(
     total_seq_len: usize,
     dqkv: usize,
 ) {
-    todo!("Implement self_attention");
+    // score = Q @ K.T / sqrt(dim)
+    let _a = unsafe { att_scores.data_mut() };
+    let _q = q.data();
+    let _k = k.data();
+    let _v = v.data();
+    let sqrt = (dqkv as f32).sqrt();
+
+    for h in 0..n_kv_h * n_groups {
+        for l in 0..seq_len {
+            for i in 0..total_seq_len {
+                let sum = (0..dqkv)
+                    .map(|j| {
+                        _q[l * n_kv_h * n_groups + h * dqkv + j]
+                            * _k[i * n_kv_h + h / n_groups * dqkv + j]
+                    })
+                    .sum::<f32>();
+                _a[h * seq_len + l * total_seq_len + i] = sum / sqrt;
+            }
+        }
+    }
+
+    // attn = softmax(score)
+    masked_softmax(att_scores);
+
+    // x = attn @ V
+    let _a = att_scores.data();
+    let _h = unsafe { hidden_states.data_mut() };
+    for h in 0..n_kv_h * n_groups {
+        //行
+        for l in 0..seq_len {
+            //列
+            for i in 0..dqkv {
+                let sum = (0..total_seq_len)
+                    .map(|j| {
+                        _a[h * seq_len + l * total_seq_len + j]
+                            * _v[i + h / n_groups * dqkv + j * n_kv_h * dqkv]
+                    })
+                    .sum::<f32>();
+                _h[l * n_kv_h * n_groups * dqkv + h * dqkv + i] = sum;
+            }
+        }
+    }
 }
 
 fn mlp(
@@ -167,18 +241,29 @@ fn mlp(
     rms_w: &Tensor<f32>,
     eps: f32,
 ) {
+    // hidden = rms_norm(residual)
     rms_norm(hidden_states, residual, rms_w, eps);
+
+    // gate = hidden @ gate_weight.T
     matmul_transb(gate, 0., hidden_states, w_gate, 1.);
+
+    // up = hidden @ up_weight.T
     matmul_transb(up, 0., hidden_states, w_up, 1.);
+
+    // itermediate = gate * sigmoid(gate) * up ## silu
     assert!(up.size() == gate.size());
-    let mut h = Tensor::<f32>::default(up.shape());
-    let _h = unsafe { h.data_mut() };
+    let mut itermediate = Tensor::<f32>::default(up.shape());
+    let _i = unsafe { itermediate.data_mut() };
     let _u = up.data();
     let _g = gate.data();
     for i in 0..up.size() {
-        _h[i] = sigmoid(_g[i]) * _g[i] * _u[i];
+        _i[i] = sigmoid(_g[i]) * _g[i] * _u[i];
     }
-    matmul_transb(hidden_states, 0., &h, w_down, 1.);
+
+    // output = itermediate @ down_weight.T
+    matmul_transb(hidden_states, 0., &itermediate, w_down, 1.);
+
+    // residual = output + residual
     let len = residual.size();
     assert!(len == hidden_states.size());
     let _r = unsafe { residual.data_mut() };
