@@ -185,6 +185,34 @@ impl Llama<f32> {
 
         result
     }
+
+    pub fn chat(
+        &self,
+        token_ids: &[u32],
+        max_len: usize,
+        top_p: f32,
+        top_k: u32,
+        temperature: f32,
+        mut cache: KVCache<f32>,
+    ) -> (Vec<u32>, KVCache<f32>) {
+        let mut result = Vec::<u32>::new();
+        let mut token: Vec<u32> = Vec::from(token_ids);
+        if token[0] != self.bos_token_id {
+            token.insert(0, self.bos_token_id);
+        }
+        let mut input = Tensor::<u32>::new(token, &vec![1, token_ids.len()]);
+        loop {
+            let output =
+                random_sample(&self.forward(&input, &mut cache), top_p, top_k, temperature);
+            result.push(output);
+            if result.len() >= max_len || output == self.eos_token_id {
+                break;
+            }
+            input = Tensor::<u32>::new(Vec::from([output]), &vec![1, 1]);
+        }
+
+        (result, cache)
+    }
 }
 
 fn self_attention(
