@@ -20,24 +20,19 @@ fn story() {
     println!("{}", tokenizer.decode(&output_ids, true).unwrap());
 }
 
-fn main() {
-    // story();
+fn chat() {
     let project_dir = env!("CARGO_MANIFEST_DIR");
     let model_dir = PathBuf::from(project_dir).join("models").join("chat");
     let llama = model::Llama::<f32>::from_safetensors(&model_dir);
     let tokenizer = Tokenizer::from_file(model_dir.join("tokenizer.json")).unwrap();
     let mut cache = llama.new_cache();
     let mut user;
-    // What are some potential applications for quantum computing?
-    // What is one plus one?
-    // What is my question?
-    // let input ="<|im_start|>system\nAssistant is a large language model trained by OpenAI.\n<|im_end|>\n<|im_start|>user\nWho were the founders of Microsoft?\n<|im_end|>\n<|im_start|>assistant\n";
     let mut input: String;
     let mut output_ids;
     loop {
         user = String::new();
         std::io::stdin().read_line(&mut user).expect("WTF!");
-        println!("{}", user.trim());
+
         if user.trim().eq("quit") {
             break;
         }
@@ -50,5 +45,18 @@ fn main() {
         let input_ids = binding.get_ids();
         (output_ids, cache) = llama.chat(input_ids, 500, 0.9, 4, 1., cache);
         println!("{}", tokenizer.decode(&output_ids, true).unwrap());
+    }
+}
+
+fn main() {
+    println!("Enter 1 to call the story model, and enter 2 to call the chat model:");
+
+    let mut input = String::new();
+    std::io::stdin().read_line(&mut input).expect("WTF!");
+
+    match input.trim() {
+        "1" => story(),
+        "2" => chat(),
+        _ => println!("Invalid input!"),
     }
 }
